@@ -70,11 +70,16 @@ def _gemini_request(payload: Dict[str, Any]) -> "tuple[bool, Any]":
 
 
 def _gemini_generate(
-    system: str, user: str, max_tokens: int, json_mode: bool = False, thinking_level: str = "LOW"
+    system: str,
+    user: str,
+    max_tokens: int,
+    json_mode: bool = False,
+    thinking_level: str = "LOW",
+    temperature: float = 0.7,
 ) -> Optional[str]:
     generation_config: Dict[str, Any] = {
         "maxOutputTokens": max_tokens,
-        "temperature": 0.7,
+        "temperature": temperature,
         # This model family spends part of maxOutputTokens on invisible reasoning
         # before the visible answer unless told not to. thinkingLevel is the
         # field for Gemini 3.x models (2.5-era models used a numeric
@@ -192,7 +197,7 @@ You asked: {question}
 Candidate's message: {answer}
 
 Respond per your instructions."""
-    text = _gemini_generate(FOLLOWUP_SYSTEM, prompt, max_tokens=500, thinking_level="MEDIUM")
+    text = _gemini_generate(FOLLOWUP_SYSTEM, prompt, max_tokens=500, thinking_level="MEDIUM", temperature=0.3)
     return text if text else fallback.fallback_followup(answer, item)
 
 
