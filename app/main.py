@@ -3,18 +3,28 @@
 No authentication. State is kept server-side per sessionId. A request with a
 "candidate" field (re)starts the interview for that sessionId; a request with
 a "message" field continues it.
+
+Also serves a small browser UI at "/" (app/static/index.html) so the agent can
+be tried interactively without curl/Postman -- purely a convenience layer on
+top of the same POST /api/interview endpoint the spec requires; it adds no new
+interview logic.
 """
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.interview import engine
+from app.interview.data import CANDIDATES_BY_ID, CANDIDATE_SUMMARIES
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("interview.api")
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app = FastAPI(title="AI Interview Agent", version="1.0.0")
 
@@ -24,6 +34,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/")
+def index() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/api/candidates")
+def list_candidates() -> List[Dict[str, Any]]:
+    """Lightweight listing for the browser UI's candidate picker -- not part of
+    the spec's contract, which only requires the client to already have a
+    candidate object to send."""
+    return CANDIDATE_SUMMARIES
+
+
+@app.get("/api/candidates/{candidate_id}")
+def get_candidate(candidate_id: str) -> Dict[str, Any]:
+    candidate = CANDIDATES_BY_ID.get(candidate_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail=f"No candidate with id '{candidate_id}'.")
+    return candidate
 
 
 class InterviewRequest(BaseModel):
