@@ -133,7 +133,7 @@ def llm_diagnostics() -> Dict[str, Any]:
     payload = {
         "system_instruction": {"parts": [{"text": "Reply with exactly one word."}]},
         "contents": [{"role": "user", "parts": [{"text": "Say: OK"}]}],
-        "generationConfig": {"maxOutputTokens": 30, "thinkingConfig": {"thinkingBudget": 0}},
+        "generationConfig": {"maxOutputTokens": 30, "thinkingConfig": {"thinkingLevel": "LOW"}},
     }
     ok, result = llm._gemini_request(payload)
     if ok:

@@ -18,7 +18,7 @@ from . import fallback
 logger = logging.getLogger("interview.llm")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
 GEMINI_REQUEST_TIMEOUT = float(os.environ.get("GEMINI_REQUEST_TIMEOUT_SECONDS", "30"))
 GEMINI_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
@@ -73,13 +73,13 @@ def _gemini_generate(system: str, user: str, max_tokens: int, json_mode: bool = 
     generation_config: Dict[str, Any] = {
         "maxOutputTokens": max_tokens,
         "temperature": 0.7,
-        # gemini-2.5-flash-lite spends part of maxOutputTokens on invisible
-        # reasoning before the visible answer unless told not to; thinkingBudget
-        # is the correct field for the 2.5 model family (2.5 Flash/Pro/Flash-Lite
-        # -- 3.x models use a different "thinkingLevel" field instead). If this
-        # ever stops being valid, _gemini_request just returns ok=False and the
+        # This model family spends part of maxOutputTokens on invisible reasoning
+        # before the visible answer unless told not to. thinkingLevel is the
+        # field for Gemini 3.x models (2.5-era models used a numeric
+        # thinkingBudget instead). If this ever stops being valid for whatever
+        # model is configured, _gemini_request just returns ok=False and the
         # call falls through to the deterministic engine like any other failure.
-        "thinkingConfig": {"thinkingBudget": 0},
+        "thinkingConfig": {"thinkingLevel": "LOW"},
     }
     if json_mode:
         generation_config["responseMimeType"] = "application/json"
