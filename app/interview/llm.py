@@ -1,10 +1,10 @@
-"""Question/follow-up/feedback generation via a local Ollama model, with a
-deterministic fallback (see fallback.py) for every failure mode: Ollama not
-running, model not pulled, network hiccup, malformed JSON, or timeout. The
-endpoint must never 500 or hang just because the local LLM is unavailable.
+"""Question/follow-up/feedback generation via the free-tier Google Gemini API,
+with a deterministic fallback (see fallback.py) for every failure mode: no API
+key configured, network hiccup, safety block, malformed JSON, rate limit, or
+timeout. The endpoint must never 500 or hang just because the LLM call failed.
 
-Uses the stdlib only (urllib) so no extra HTTP client dependency is required
-just to talk to a local Ollama server.
+Uses the stdlib only (urllib) so no extra HTTP client / SDK dependency is
+required just to call the Gemini REST endpoint.
 """
 import json
 import logging
@@ -17,68 +17,57 @@ from . import fallback
 
 logger = logging.getLogger("interview.llm")
 
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1")
-OLLAMA_CONNECT_TIMEOUT = float(os.environ.get("OLLAMA_CONNECT_TIMEOUT_SECONDS", "3"))
-OLLAMA_REQUEST_TIMEOUT = float(os.environ.get("OLLAMA_REQUEST_TIMEOUT_SECONDS", "30"))
-
-_available: Optional[bool] = None
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_REQUEST_TIMEOUT = float(os.environ.get("GEMINI_REQUEST_TIMEOUT_SECONDS", "30"))
+GEMINI_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 
-def _ollama_available() -> bool:
-    """Cheap, cached reachability check so every turn doesn't pay a failed-connect
-    timeout once we know the local server is down."""
-    global _available
-    if _available is not None:
-        return _available
-    try:
-        req = urllib.request.Request(f"{OLLAMA_HOST}/api/tags", method="GET")
-        with urllib.request.urlopen(req, timeout=OLLAMA_CONNECT_TIMEOUT) as resp:
-            _available = resp.status == 200
-    except Exception as e:
+def _gemini_available() -> bool:
+    if not GEMINI_API_KEY:
         logger.warning(
-            "Ollama not reachable at %s (%s); using deterministic fallback. "
-            "Run `ollama serve` and `ollama pull %s` to enable LLM-generated questions.",
-            OLLAMA_HOST,
-            e,
-            OLLAMA_MODEL,
+            "GEMINI_API_KEY not set; using deterministic fallback. "
+            "Get a free key at https://aistudio.google.com/apikey and set it as an env var."
         )
-        _available = False
-    return _available
+        return False
+    return True
 
 
-def _ollama_chat(system: str, user: str, max_tokens: int, json_mode: bool = False) -> Optional[str]:
-    if not _ollama_available():
+def _gemini_generate(system: str, user: str, max_tokens: int, json_mode: bool = False) -> Optional[str]:
+    if not _gemini_available():
         return None
-    payload: Dict[str, Any] = {
-        "model": OLLAMA_MODEL,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        "stream": False,
-        "options": {"num_predict": max_tokens, "temperature": 0.7},
-    }
+    generation_config: Dict[str, Any] = {"maxOutputTokens": max_tokens, "temperature": 0.7}
     if json_mode:
-        payload["format"] = "json"
+        generation_config["responseMimeType"] = "application/json"
+    payload = {
+        "system_instruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": user}]}],
+        "generationConfig": generation_config,
+    }
     try:
+        url = f"{GEMINI_ENDPOINT}?key={GEMINI_API_KEY}"
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
-            f"{OLLAMA_HOST}/api/chat",
+            url,
             data=data,
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=OLLAMA_REQUEST_TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=GEMINI_REQUEST_TIMEOUT) as resp:
             body = json.loads(resp.read().decode("utf-8"))
-        text = (body.get("message") or {}).get("content")
-        return text.strip() if text else None
+        candidates = body.get("candidates") or []
+        if not candidates:
+            logger.warning("Gemini returned no candidates (likely safety-blocked): %s", body.get("promptFeedback"))
+            return None
+        parts = (candidates[0].get("content") or {}).get("parts") or []
+        text = "".join(p.get("text", "") for p in parts).strip()
+        return text if text else None
     except urllib.error.HTTPError as e:
-        # Most common cause: the configured model hasn't been pulled.
-        logger.warning("Ollama HTTP error %s: %s", e.code, e.read().decode("utf-8", "ignore"))
+        # Most common causes: invalid/missing API key (400/403) or rate limit (429).
+        logger.warning("Gemini HTTP error %s: %s", e.code, e.read().decode("utf-8", "ignore"))
         return None
     except Exception:
-        logger.exception("Ollama chat call failed")
+        logger.exception("Gemini call failed")
         return None
 
 
@@ -138,7 +127,7 @@ Relevant learning objectives: {'; '.join(item.get('objectives') or [])}
 
 {transition}"""
 
-    text = _ollama_chat(QUESTION_SYSTEM, prompt, max_tokens=200)
+    text = _gemini_generate(QUESTION_SYSTEM, prompt, max_tokens=200)
     return text if text else fallback.fallback_question(item)
 
 
@@ -161,7 +150,7 @@ You asked: {question}
 Candidate answered: {answer}
 
 Ask one adaptive follow-up question based on that answer, per your instructions."""
-    text = _ollama_chat(FOLLOWUP_SYSTEM, prompt, max_tokens=150)
+    text = _gemini_generate(FOLLOWUP_SYSTEM, prompt, max_tokens=150)
     return text if text else fallback.fallback_followup(answer, item)
 
 
@@ -184,7 +173,7 @@ Full interview transcript:
 
 Write the structured feedback JSON now."""
 
-    text = _ollama_chat(FEEDBACK_SYSTEM, prompt, max_tokens=800, json_mode=True)
+    text = _gemini_generate(FEEDBACK_SYSTEM, prompt, max_tokens=800, json_mode=True)
     if text:
         try:
             data = json.loads(text)

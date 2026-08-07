@@ -13,30 +13,29 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 That's it — the server runs fully self-contained, with no required external services.
-By default it tries to enhance question phrasing with a local Ollama model; if Ollama
-isn't running, it transparently uses a deterministic rule-based engine instead (see
-[LLM layer](#llm-layer--fallback) below). No cloud API key of any kind is required.
+By default it tries to enhance question phrasing with Google's free-tier Gemini API;
+if no API key is configured (or the call fails for any reason), it transparently uses
+a deterministic rule-based engine instead (see [LLM layer](#llm-layer--fallback) below).
+No paid API key of any kind is required.
 
-### Optional: enable LLM-generated phrasing via Ollama
+### Optional: enable LLM-generated phrasing via Gemini (free tier)
 
 ```bash
-# 1. Install Ollama: https://ollama.com
-# 2. Pull a chat-capable model
-ollama pull llama3.1
-# 3. Ollama usually already runs as a background service; if not:
-ollama serve
+# 1. Go to https://aistudio.google.com/apikey
+# 2. Sign in with a Google account, click "Create API key" -- no credit card required
+# 3. Set it as an environment variable (never commit it):
+export GEMINI_API_KEY="your-key-here"
 ```
 
 Configure via environment variables (see `.env.example`):
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OLLAMA_HOST` | `http://localhost:11434` | Where the local Ollama server listens |
-| `OLLAMA_MODEL` | `llama3.1` | Which pulled model to use for question/feedback generation |
+| `GEMINI_API_KEY` | *(unset)* | Free API key from Google AI Studio. Without it, the agent runs on the fallback engine. |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Which free-tier-eligible Gemini model to call |
 
-Fitting note: Day 2 of this cohort's own curriculum ("Local LLM & AI Coding Assistant
-Setup") teaches Ollama + Qwen2.5-Coder — set `OLLAMA_MODEL=qwen2.5-coder` if you'd
-rather reuse that model instead of pulling a new one.
+On a hosted platform (e.g. Render), set `GEMINI_API_KEY` in the dashboard's Environment
+settings rather than in code -- it's never read from anywhere but the environment.
 
 ## API
 
@@ -102,9 +101,10 @@ flow (see [Robustness](#robustness--edge-cases-handled)).
 
 ## LLM layer & fallback
 
-`app/interview/llm.py` calls a local Ollama model for natural-sounding question and
-follow-up phrasing and for the final feedback synthesis. Every call is wrapped so that
-**any** failure — Ollama not running, model not pulled, malformed JSON, timeout — falls
+`app/interview/llm.py` calls Google's free-tier Gemini API (`gemini-2.5-flash` by default)
+for natural-sounding question and follow-up phrasing and for the final feedback
+synthesis. Every call is wrapped so that **any** failure — no API key configured, a
+network error, a safety block, a rate limit, malformed JSON, or a timeout — falls
 straight through to `app/interview/fallback.py`, a deterministic engine that:
 
 - Still adapts question *depth* to the candidate's mastery signal per topic.
@@ -114,9 +114,7 @@ straight through to `app/interview/fallback.py`, a deterministic engine that:
   transcript.
 
 This means the agent **never 500s, hangs, or produces a broken interview because of an
-LLM outage** — it degrades to templated-but-still-adaptive behavior instead. The
-reachability check to Ollama is cached after the first attempt so a down Ollama server
-doesn't add a timeout to every single turn.
+LLM outage** — it degrades to templated-but-still-adaptive behavior instead.
 
 ## Robustness / edge cases handled
 
@@ -153,8 +151,9 @@ app/
     planner.py                Builds the personalized question plan
     state.py                  In-memory session store (sessionId -> Session)
     engine.py                  Interview state machine (main -> followup -> next topic -> feedback)
-    llm.py                    Ollama integration
-    fallback.py                Deterministic template engine (used when Ollama is unavailable)
+    llm.py                    Gemini API integration
+    data.py                    Loads candidates.json for the browser UI's picker
+    fallback.py                Deterministic template engine (used when Gemini is unavailable)
 ```
 
 ## Known limitations
