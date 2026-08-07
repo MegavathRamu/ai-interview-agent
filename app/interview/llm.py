@@ -75,10 +75,11 @@ def _gemini_generate(system: str, user: str, max_tokens: int, json_mode: bool = 
         "temperature": 0.7,
         # This model spends part of maxOutputTokens on invisible reasoning before
         # the visible answer, which was silently eating the entire budget for
-        # short conversational replies. Disable it -- if the API/model rejects
-        # the field, _gemini_request just returns ok=False and this call falls
-        # through to the deterministic engine like any other failure.
-        "thinkingConfig": {"thinkingBudget": 0},
+        # short conversational replies. "LOW" minimizes that. If the field/value
+        # isn't valid for whatever model gemini-flash-latest resolves to,
+        # _gemini_request just returns ok=False and this call falls through to
+        # the deterministic engine like any other failure.
+        "thinkingConfig": {"thinkingLevel": "LOW"},
     }
     if json_mode:
         generation_config["responseMimeType"] = "application/json"
