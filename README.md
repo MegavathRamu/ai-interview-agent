@@ -32,7 +32,7 @@ Configure via environment variables (see `.env.example`):
 | Variable | Default | Purpose |
 |---|---|---|
 | `GEMINI_API_KEY` | *(unset)* | Free API key from Google AI Studio. Without it, the agent runs on the fallback engine. |
-| `GEMINI_MODEL` | `gemini-2.5-flash` | Which free-tier-eligible Gemini model to call |
+| `GEMINI_MODEL` | `gemini-flash-latest` | Which free-tier-eligible Gemini model to call |
 
 On a hosted platform (e.g. Render), set `GEMINI_API_KEY` in the dashboard's Environment
 settings rather than in code -- it's never read from anywhere but the environment.
@@ -101,7 +101,7 @@ flow (see [Robustness](#robustness--edge-cases-handled)).
 
 ## LLM layer & fallback
 
-`app/interview/llm.py` calls Google's free-tier Gemini API (`gemini-2.5-flash` by default)
+`app/interview/llm.py` calls Google's free-tier Gemini API (`gemini-flash-latest` by default)
 for natural-sounding question and follow-up phrasing and for the final feedback
 synthesis. Every call is wrapped so that **any** failure — no API key configured, a
 network error, a safety block, a rate limit, malformed JSON, or a timeout — falls
