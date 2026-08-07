@@ -33,17 +33,21 @@ def _gemini_available() -> bool:
     return True
 
 
-def _gemini_generate(system: str, user: str, max_tokens: int, json_mode: bool = False) -> Optional[str]:
+def _scrub(text: str) -> str:
+    """Defensively strip the API key out of any string before it's logged or
+    returned in a diagnostics response -- error strings should never contain
+    it, but this guards against a future change accidentally leaking it."""
+    if GEMINI_API_KEY and GEMINI_API_KEY in text:
+        return text.replace(GEMINI_API_KEY, "***")
+    return text
+
+
+def _gemini_request(payload: Dict[str, Any]) -> "tuple[bool, Any]":
+    """Low-level call. Returns (True, parsed_response_json) on success, or
+    (False, human-readable error string) on any failure -- network error,
+    HTTP error (invalid key, rate limit, etc), or a non-2xx response."""
     if not _gemini_available():
-        return None
-    generation_config: Dict[str, Any] = {"maxOutputTokens": max_tokens, "temperature": 0.7}
-    if json_mode:
-        generation_config["responseMimeType"] = "application/json"
-    payload = {
-        "system_instruction": {"parts": [{"text": system}]},
-        "contents": [{"role": "user", "parts": [{"text": user}]}],
-        "generationConfig": generation_config,
-    }
+        return False, "GEMINI_API_KEY is not set in this environment."
     try:
         url = f"{GEMINI_ENDPOINT}?key={GEMINI_API_KEY}"
         data = json.dumps(payload).encode("utf-8")
@@ -54,21 +58,36 @@ def _gemini_generate(system: str, user: str, max_tokens: int, json_mode: bool = 
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=GEMINI_REQUEST_TIMEOUT) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-        candidates = body.get("candidates") or []
-        if not candidates:
-            logger.warning("Gemini returned no candidates (likely safety-blocked): %s", body.get("promptFeedback"))
-            return None
-        parts = (candidates[0].get("content") or {}).get("parts") or []
-        text = "".join(p.get("text", "") for p in parts).strip()
-        return text if text else None
+            return True, json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         # Most common causes: invalid/missing API key (400/403) or rate limit (429).
-        logger.warning("Gemini HTTP error %s: %s", e.code, e.read().decode("utf-8", "ignore"))
-        return None
-    except Exception:
+        body = _scrub(e.read().decode("utf-8", "ignore"))
+        logger.warning("Gemini HTTP error %s: %s", e.code, body)
+        return False, f"HTTP {e.code}: {body}"
+    except Exception as e:
         logger.exception("Gemini call failed")
+        return False, _scrub(f"{type(e).__name__}: {e}")
+
+
+def _gemini_generate(system: str, user: str, max_tokens: int, json_mode: bool = False) -> Optional[str]:
+    generation_config: Dict[str, Any] = {"maxOutputTokens": max_tokens, "temperature": 0.7}
+    if json_mode:
+        generation_config["responseMimeType"] = "application/json"
+    payload = {
+        "system_instruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": user}]}],
+        "generationConfig": generation_config,
+    }
+    ok, result = _gemini_request(payload)
+    if not ok:
         return None
+    candidates = result.get("candidates") or []
+    if not candidates:
+        logger.warning("Gemini returned no candidates (likely safety-blocked): %s", result.get("promptFeedback"))
+        return None
+    parts = (candidates[0].get("content") or {}).get("parts") or []
+    text = "".join(p.get("text", "") for p in parts).strip()
+    return text if text else None
 
 
 _CATEGORY_HINT = {

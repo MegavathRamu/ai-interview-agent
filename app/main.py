@@ -121,22 +121,29 @@ def health() -> Dict[str, str]:
 @app.get("/api/diagnostics/llm")
 def llm_diagnostics() -> Dict[str, Any]:
     """Reports whether GEMINI_API_KEY is configured and, if so, makes one real
-    test call to Gemini and reports success/failure. Never returns the key
-    itself -- only a boolean for whether it's set, and Google's own (key-free)
-    error message if the test call fails."""
-    configured = bool(llm.GEMINI_API_KEY)
-    if not configured:
+    test call to Gemini and reports the actual result. Never returns the key
+    itself -- Google's error responses don't echo it back, and any error
+    string is additionally scrubbed for the key value as a defensive measure."""
+    if not llm.GEMINI_API_KEY:
         return {
             "gemini_api_key_configured": False,
             "test_call_ok": False,
             "detail": "GEMINI_API_KEY is not set in this environment.",
         }
-    result = llm._gemini_generate("Reply with exactly one word.", "Say: OK", max_tokens=5)
+    payload = {
+        "system_instruction": {"parts": [{"text": "Reply with exactly one word."}]},
+        "contents": [{"role": "user", "parts": [{"text": "Say: OK"}]}],
+        "generationConfig": {"maxOutputTokens": 5},
+    }
+    ok, result = llm._gemini_request(payload)
+    if ok:
+        parts = ((result.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
+        detail = "".join(p.get("text", "") for p in parts).strip() or "(empty response)"
+    else:
+        detail = result  # already a human-readable, key-free error string
     return {
         "gemini_api_key_configured": True,
         "model": llm.GEMINI_MODEL,
-        "test_call_ok": result is not None,
-        "detail": result
-        if result is not None
-        else "Test call failed -- check server logs for Google's exact error (invalid key, rate limit, etc).",
+        "test_call_ok": ok,
+        "detail": detail,
     }
