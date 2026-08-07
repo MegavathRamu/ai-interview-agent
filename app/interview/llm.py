@@ -146,7 +146,7 @@ Relevant learning objectives: {'; '.join(item.get('objectives') or [])}
 
 {transition}"""
 
-    text = _gemini_generate(QUESTION_SYSTEM, prompt, max_tokens=200)
+    text = _gemini_generate(QUESTION_SYSTEM, prompt, max_tokens=600)
     return text if text else fallback.fallback_question(item)
 
 
@@ -169,7 +169,7 @@ You asked: {question}
 Candidate answered: {answer}
 
 Ask one adaptive follow-up question based on that answer, per your instructions."""
-    text = _gemini_generate(FOLLOWUP_SYSTEM, prompt, max_tokens=150)
+    text = _gemini_generate(FOLLOWUP_SYSTEM, prompt, max_tokens=500)
     return text if text else fallback.fallback_followup(answer, item)
 
 
@@ -192,7 +192,7 @@ Full interview transcript:
 
 Write the structured feedback JSON now."""
 
-    text = _gemini_generate(FEEDBACK_SYSTEM, prompt, max_tokens=800, json_mode=True)
+    text = _gemini_generate(FEEDBACK_SYSTEM, prompt, max_tokens=2000, json_mode=True)
     if text:
         try:
             data = json.loads(text)
