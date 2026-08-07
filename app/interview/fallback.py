@@ -9,8 +9,8 @@ so the experience degrades gracefully rather than becoming a static quiz.
 from typing import Any, Dict, List
 
 _VAGUE_MARKERS = (
-    "i don't know",
-    "i dont know",
+    "don't know",
+    "dont know",
     "not sure",
     "no idea",
     "don't remember",
@@ -19,6 +19,27 @@ _VAGUE_MARKERS = (
     "n/a",
     "skip",
     "pass",
+    "not familiar",
+    "not aware",
+    "no experience",
+    "haven't used",
+    "havent used",
+    "never used",
+    "not something i",
+    "don't understand",
+    "dont understand",
+    "no context",
+    # Phrases where the candidate is asking the interviewer for help rather
+    # than answering -- a strong signal they don't know the material, even
+    # when the message is long enough to pass the length check below.
+    "can i learn",
+    "can you teach",
+    "can you explain",
+    "could you explain",
+    "teach me",
+    "explain it to me",
+    "help me understand",
+    "what do you mean",
 )
 
 _PROBES_BY_TYPE = {
