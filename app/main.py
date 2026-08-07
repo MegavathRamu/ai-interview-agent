@@ -25,7 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from app.interview import engine
+from app.interview import engine, llm
 from app.interview.data import CANDIDATES_BY_ID, CANDIDATE_SUMMARIES
 
 logging.basicConfig(level=logging.INFO)
@@ -116,3 +116,27 @@ def interview(req: InterviewRequest) -> Dict[str, Any]:
 @app.get("/health")
 def health() -> Dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/diagnostics/llm")
+def llm_diagnostics() -> Dict[str, Any]:
+    """Reports whether GEMINI_API_KEY is configured and, if so, makes one real
+    test call to Gemini and reports success/failure. Never returns the key
+    itself -- only a boolean for whether it's set, and Google's own (key-free)
+    error message if the test call fails."""
+    configured = bool(llm.GEMINI_API_KEY)
+    if not configured:
+        return {
+            "gemini_api_key_configured": False,
+            "test_call_ok": False,
+            "detail": "GEMINI_API_KEY is not set in this environment.",
+        }
+    result = llm._gemini_generate("Reply with exactly one word.", "Say: OK", max_tokens=5)
+    return {
+        "gemini_api_key_configured": True,
+        "model": llm.GEMINI_MODEL,
+        "test_call_ok": result is not None,
+        "detail": result
+        if result is not None
+        else "Test call failed -- check server logs for Google's exact error (invalid key, rate limit, etc).",
+    }
