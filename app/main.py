@@ -13,6 +13,13 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from dotenv import load_dotenv
+
+# Must run before importing app.interview.* -- llm.py reads GEMINI_API_KEY from
+# the environment at import time, so .env has to be loaded first. Harmless if
+# no .env file exists (e.g. on Render, where the real env var is set directly).
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
