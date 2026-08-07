@@ -70,7 +70,16 @@ def _gemini_request(payload: Dict[str, Any]) -> "tuple[bool, Any]":
 
 
 def _gemini_generate(system: str, user: str, max_tokens: int, json_mode: bool = False) -> Optional[str]:
-    generation_config: Dict[str, Any] = {"maxOutputTokens": max_tokens, "temperature": 0.7}
+    generation_config: Dict[str, Any] = {
+        "maxOutputTokens": max_tokens,
+        "temperature": 0.7,
+        # This model spends part of maxOutputTokens on invisible reasoning before
+        # the visible answer, which was silently eating the entire budget for
+        # short conversational replies. Disable it -- if the API/model rejects
+        # the field, _gemini_request just returns ok=False and this call falls
+        # through to the deterministic engine like any other failure.
+        "thinkingConfig": {"thinkingBudget": 0},
+    }
     if json_mode:
         generation_config["responseMimeType"] = "application/json"
     payload = {
