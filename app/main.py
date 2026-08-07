@@ -133,12 +133,14 @@ def llm_diagnostics() -> Dict[str, Any]:
     payload = {
         "system_instruction": {"parts": [{"text": "Reply with exactly one word."}]},
         "contents": [{"role": "user", "parts": [{"text": "Say: OK"}]}],
-        "generationConfig": {"maxOutputTokens": 5},
+        "generationConfig": {"maxOutputTokens": 40},
     }
     ok, result = llm._gemini_request(payload)
     if ok:
-        parts = ((result.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
-        detail = "".join(p.get("text", "") for p in parts).strip() or "(empty response)"
+        candidate0 = (result.get("candidates") or [{}])[0]
+        parts = (candidate0.get("content") or {}).get("parts") or []
+        text = "".join(p.get("text", "") for p in parts).strip()
+        detail = text if text else f"(empty response; finishReason={candidate0.get('finishReason')})"
     else:
         detail = result  # already a human-readable, key-free error string
     return {
